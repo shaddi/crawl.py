@@ -1,0 +1,80 @@
+*Intro*
+crawl.py: A QtWebKit based web crawler that is designed to click on 
+everything, even things in iframes, for a list of links and to a certain depth, 
+with the goal of investigating distribution of malware via advertising 
+networks. While it can crawl through all links on a set of pages, it includes 
+optimizations to reduce crawling time. Fully headless, but based on a real web 
+browser (WebKit) so it actually renders the page as a user would see it and 
+properly evaluates JavaScript (in theory).
+
+get-links.py: A QtWebKit based link scraper for a single page.
+
+*Usage*
+To run:
+python crawl.py <link depth> <domain with http://>
+
+Results come back as:
+<depth> <site visited> <site's parent>
+
+Example:
+$ python crawl.py 2 http://example.com
+0 http://example.com None
+1 http://www.icann.org/ http://example.com
+2 http://gsa.icann.org/search?access=p&client=icann&proxystylesheet=icann&output=xml_no_dtd&site=icann&q=&proxycustom=%3CADVANCED/%3E http://www.icann.org/
+2 http://twitter.com/icann/ http://www.icann.org/
+2 http://blog.icann.org http://www.icann.org/
+2 http://meetings.icann.org http://www.icann.org/
+2 http://hostedjobs.openhire.com/epostings/submit.cfm?fuseaction=app.allpositions&company_id=16025&version=1 http://www.icann.org/
+2 http://www.root-dnssec.org/ http://www.icann.org/
+2 http://svsf40.icann.org/ http://www.icann.org/
+2 http://www.iana.org http://www.icann.org/
+2 http://www.atlarge.icann.org http://www.icann.org/
+2 http://aso.icann.org/ http://www.icann.org/
+2 http://ccnso.icann.org http://www.icann.org/
+2 http://gac.icann.org/ http://www.icann.org/
+2 http://gnso.icann.org http://www.icann.org/
+2 http://www.internic.net/whois.html http://www.icann.org/
+
+*Crawler class*
+To create a Crawler object, use this:
+Crawler(url_list, max_depth, dots=True, skip_same_domain=False, debug=False)
+
+where url_list is a list of url strings you want to crawl, and max_depth is the
+click depths you're interested in. Crawling results are stored as a list of 
+results (Crawler.results), each element of which contains a single URL's crawl
+tree.
+
+There are some options inside the Crawler class for configuring output:
+- dots=True: turn on some status dots to indicate that progress is occuring. 
+- skip_same_domain=True: skips links to the same domain as the current page.
+- debug=True: as expected, provides some extra debug verbosity (exactly what depends on the revision you're using!)
+
+There are two key functions in the Crawler class:
+- process(url, ttl=10, log=False, strip_dupes=True, debug=False, round_two=False)
+This function extracts all the urls that are available for a user to click on a
+single page. This includes links on the page itself, as well as those contained
+in any iframes on the page. Because iframes can contain other iframes, 
+redirects, etc, we use the ttl field to prevent gettting lost in a particularly
+nasty iframe. If log=True, we log the (prettified) HTML we pulled in to a file.
+strip_dupes=True means we remove duplicate links from the result set. round_two
+is a marker for handling links inside iframes: think of it as a finishing move.
+
+- crawl(url):
+This starts a crawl at a particular URL. It basically builds a crawl tree using
+process() and stores it in the results list.  
+
+*Earl class*
+The results list of a crawler is a list of Earl objects. Each Earl is a node of 
+a crawl tree. It has four attributes:
+- value: the URL of this node of the crawl tree
+- depth: the click depth we were at when we discovered it
+- parent: the Earl of the page on which on which this URL was discovered
+- children[]: a list of Earls of URLs which were reached form this page
+
+There is one function, show(). Earl.show() prints a crawl tree, as shown in
+the example output above.
+
+*Author*
+Shaddi Hasan (shaddi@berkeley.edu)
+March 2011
+

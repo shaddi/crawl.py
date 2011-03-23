@@ -34,9 +34,9 @@ def process(url):
 	
 	soup = BeautifulSoup(page)
 
-	#f = open('pretty.log', 'w')
-	#f.write(soup.prettify())
-	#f.close()
+	f = open('pretty.log', 'w')
+	f.write(soup.prettify())
+	f.close()
 
 	links = []
 
