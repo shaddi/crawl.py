@@ -74,6 +74,10 @@ a crawl tree. It has four attributes:
 There is one function, show(). Earl.show() prints a crawl tree, as shown in
 the example output above.
 
+*Acks*
+QtWebKit code taken from here:
+http://blog.sitescraper.net/2010/06/scraping-javascript-webpages-in-python.html
+
 *Author*
 Shaddi Hasan (shaddi@berkeley.edu)
 March 2011
