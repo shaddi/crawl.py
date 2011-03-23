@@ -3,6 +3,7 @@ from PyQt4.QtCore import *
 from PyQt4.QtWebKit import *
 import urlparse
 import sys
+import multiprocessing
 from BeautifulSoup import BeautifulSoup
 
 # Render a page
@@ -49,7 +50,7 @@ class Earl:
 		return disp
 
 # the crawler itself
-class Crawler:		
+class Crawler(multiprocessing.Process):		
 	def __init__(self, url_list, max_depth, dots=True, skip_same_domain=False, debug=False):
 		self.debug = debug
 		self.dots = dots
@@ -57,6 +58,10 @@ class Crawler:
 		self.url_list = url_list
 		self.max_depth = max_depth
 		self.results = [] # list of top-level Earls
+
+	# for running as a process
+	def run(self):
+		self.crawl_all()
 
 	# a stupid, stupid filter for non-web links
 	def _is_web(self, link):
@@ -183,17 +188,20 @@ class Crawler:
 			# earl's the guy you're currently crawling. 
 			earl = stack.pop()
 
-			# make a new line for pretty dots at every new level of search
-			if self.dots and earl.level > lvl:
-				lvl = earl.level
-				print ""
-				print lvl,
-				sys.stdout.flush()
+			try:
+				# make a new line for pretty dots at every new level of search
+				if self.dots and earl.level > lvl:
+					lvl = earl.level
+					print ""
+					print lvl,
+					sys.stdout.flush()
 
-			# get list for all children if we're not already at the limit
-			earl.children = [Earl(str(i), earl.level+1, earl, showme=True) for i in self.process(earl.value)]
-			if earl.level < self.max_depth - 1:
-				stack += earl.children
+				# get list for all children if we're not already at the limit
+				earl.children = [Earl(unicode(i), earl.level+1, earl, showme=True) for i in self.process(earl.value)]
+				if earl.level < self.max_depth - 1:
+					stack += earl.children
+			except Exception:
+				continue
 
 		#print ""
 
@@ -203,13 +211,11 @@ class Crawler:
 			self.crawl(u)
 
 def main():
+
 	depth = int(sys.argv[1])
 	urls = sys.argv[2:]
-	spiderman = Crawler(urls, depth, dots=False, skip_same_domain=True, debug=True)
+	spiderman = Crawler(urls, depth, dots=False, skip_same_domain=True, debug=False)
 	spiderman.crawl_all()
-	for r in spiderman.results:
-		#print r.show()
-		pass
 	
 if __name__ == "__main__":
 	main()	
