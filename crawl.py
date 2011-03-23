@@ -21,18 +21,28 @@ class Render(QWebPage):
 # rhymes with url, har har
 # wrapper for crawl result, builds a result tree
 class Earl:
-	def __init__(self, value, level, parent=None, children=[]):
+	def __init__(self, value, level, parent=None, children=[], showme=False):
 		self.value = value
 		self.level = level
 		self.parent = parent
 		self.children = children
+		if showme:
+			print self.showme()
 
+	def showme(self):
+		if self.parent == None:
+			momma = "None"
+		else:
+			momma = unicode(self.parent.value)
+		disp = "%s %s %s" % (str(self.level), unicode(self.value), momma) # note we use spaces since commas can be in urls
+		return disp
+	
 	def show(self):
 		if self.parent == None:
 			momma = "None"
 		else:
-			momma = str(self.parent.value)
-		disp = "%s %s %s\n" % (str(self.level), str(self.value), momma) # note we use spaces since commas can be in urls
+			momma = unicode(self.parent.value)
+		disp = "%s %s %s\n" % (str(self.level), unicode(self.value), momma) # note we use spaces since commas can be in urls
 		for c in self.children:
 			disp += c.show()
 
@@ -50,7 +60,14 @@ class Crawler:
 
 	# a stupid, stupid filter for non-web links
 	def _is_web(self, link):
-		if not link.startswith("#") and not link.startswith("javascript:") and not link.startswith("mailto:"):
+		scheme = urlparse.urlsplit(link)[0] 
+		
+		# if it's not an http, https, or "" (relative) link, it definitely isn't a web link.
+		if not (scheme == "http" or scheme == "https" or scheme == ""):
+			return False
+
+		# relative links have some complications too, we don't want same-page links for instance.
+		if not link.startswith("#"):
 			return True
 
 	# some guy said this was the fastest way to deduplicate a list in-order. seems legit to me.
@@ -70,12 +87,20 @@ class Crawler:
 	def visit(self, url):
 		r = Render(url)
 		p = unicode(r.frame.toHtml())
-		f_url = str(r.frame.url().toString())
+		f_url = unicode(r.frame.url().toString())
 		return [f_url, p]
+
+	# get the url that url resolves to (after redirects, etc)
+	def peek(self, url):
+		result = self.visit(url)[0]
+		if self.debug: print "resolving: %s => %s" % (url, result)
+		return result
 
 	# given a url, return a list of all immediately clickable links
 	def process(self, url, ttl=10, log=False, strip_dupes=True, debug=False, round_two=False):
-		if ttl < 0: return [] # allows us to bound a search
+		if ttl < 0: 
+			if self.debug: print "ttl expired on %s" % url
+			return [] # allows us to bound a search
 
 		# pull down and render page
 		final_url, page = self.visit(url)
@@ -83,7 +108,7 @@ class Crawler:
 		if self.dots: 
 			print '.',
 			sys.stdout.flush()
-		if debug or self.debug: print final_url + " " + str(ttl)
+		if self.debug: print "now processing: %s (ttl=%d)" % (final_url,ttl)
 		
 		# parse page
 		soup = BeautifulSoup(page)
@@ -96,15 +121,23 @@ class Crawler:
 		
 		links = []
 
+		# 1. get links on a page fully resolved
+		# always process an iframe's src to depth 1: peek at each url we get from href's in an iframe. 
+		# if there are more iframes in an iframe fuck em.
+		# issue here is we're exploring links of things we find after processing an iframe: should process the iframe, get the links, make sure they each resolve, and then return the addresses they resolve to
+
 		# get anchored links
 		for tag in soup.findAll('a', href=True):
 			link = tag['href']
 			if self._is_web(link):
 				l = urlparse.urljoin(final_url,link)
-				if round_two:
-					links += self.process(l, 0)
-				else:
+				if self.debug: print "found href to: %s (current: %s)" % (l, final_url[:60])
+				if round_two: 
+					links.append(self.peek(l))
+				else: 
 					links.append(l)
+
+		if self.debug: print "done with hrefs for %s" % final_url[:60]
 		
 		# seek and destroy all iframes, harvest their innards
 		for tag in soup.findAll('iframe', src=True):
@@ -112,8 +145,10 @@ class Crawler:
 			if self._is_web(link):
 				l = urlparse.urljoin(final_url,tag['src'])
 				if not final_url == l: # avoid self-loops
-					print "%s, %s" % (urlparse.urlsplit(final_url)[1], urlparse.urlsplit(l)[1])
-					links += self.process(l, ttl-1, round_two=True) # may not want to skip self on second round... should test this
+					if self.debug: print "about to process: %s (current: %s)" % (l, final_url[:60])
+					links += self.process(l, 0, round_two=True) 
+
+		if self.debug: print "done with iframes for %s" % final_url[:60]
 
 		# remove duplicates from result list
 		if strip_dupes:	
@@ -125,8 +160,14 @@ class Crawler:
 		# ignore links back to the same domain: it's a quagmire in there
 		if self.skip_same_domain: 
 			orig_domain = urlparse.urlsplit(final_url)[1]
-			links = [l for l in links if not orig_domain == urlparse.urlsplit(l)[1]]
+			orig_domain = ".".join(orig_domain.split(".")[-2:]) # extracts last bit of domain, doesn't handle port #
+			#print "orig domain: %s" % orig_domain
+			#for l in links:
+			#	print "%s: %d" % (urlparse.urlsplit(l)[1],  urlparse.urlsplit(l)[1].find(orig_domain))
+			links = [l for l in links if (urlparse.urlsplit(l)[1].find(orig_domain) == -1)]
 
+		#resolved_links = [self.peek(l) for l in links]
+		#return resolved_links 
 		return links
 
 	# get a url, earlize it, process its links, throw them on the stack
@@ -150,11 +191,11 @@ class Crawler:
 				sys.stdout.flush()
 
 			# get list for all children if we're not already at the limit
-			earl.children = [Earl(str(i), earl.level+1, earl) for i in self.process(earl.value)]
+			earl.children = [Earl(str(i), earl.level+1, earl, showme=True) for i in self.process(earl.value)]
 			if earl.level < self.max_depth - 1:
 				stack += earl.children
 
-		print ""
+		#print ""
 
 	# perform a crawl on all the links in this crawler's url list
 	def crawl_all(self):
@@ -164,10 +205,11 @@ class Crawler:
 def main():
 	depth = int(sys.argv[1])
 	urls = sys.argv[2:]
-	spiderman = Crawler(urls, depth, dots=False, skip_same_domain=True, debug=False)
+	spiderman = Crawler(urls, depth, dots=False, skip_same_domain=True, debug=True)
 	spiderman.crawl_all()
 	for r in spiderman.results:
-		print r.show()
+		#print r.show()
+		pass
 	
 if __name__ == "__main__":
 	main()	
